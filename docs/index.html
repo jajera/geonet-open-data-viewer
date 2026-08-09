@@ -1,0 +1,413 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1"/>
+<title>GeoNet Open Data — Bucket Viewer</title>
+<meta name="description" content="Browse the public GeoNet Open Data S3 bucket in your browser and copy ready-to-run AWS CLI download commands. Sortable, paginated, with a dark/light theme."/>
+<link rel="icon" href="favicon.svg" type="image/svg+xml"/>
+<link rel="icon" href="favicon-32.png" sizes="32x32" type="image/png"/>
+<link rel="apple-touch-icon" href="apple-touch-icon.png"/>
+<meta property="og:type" content="website"/>
+<meta property="og:title" content="GeoNet Open Data — S3 bucket viewer"/>
+<meta property="og:description" content="Browse the public GeoNet Open Data S3 bucket and copy ready-to-run AWS CLI download commands."/>
+<meta property="og:url" content="https://jajera.github.io/geonet-open-data-viewer/"/>
+<meta property="og:image" content="https://jajera.github.io/geonet-open-data-viewer/og.png"/>
+<meta property="og:image:width" content="1200"/>
+<meta property="og:image:height" content="630"/>
+<meta name="twitter:card" content="summary_large_image"/>
+<meta name="twitter:title" content="GeoNet Open Data — S3 bucket viewer"/>
+<meta name="twitter:description" content="Browse the public GeoNet Open Data S3 bucket and copy ready-to-run AWS CLI download commands."/>
+<meta name="twitter:image" content="https://jajera.github.io/geonet-open-data-viewer/og.png"/>
+<script>
+  // Set theme before first paint to avoid a flash. Default = system preference.
+  (function(){
+    var stored; try{ stored = localStorage.getItem('geonet-theme'); }catch(e){}
+    var t = (stored==='light'||stored==='dark') ? stored
+      : (window.matchMedia('(prefers-color-scheme: light)').matches ? 'light' : 'dark');
+    document.documentElement.dataset.theme = t;
+    document.documentElement.style.colorScheme = t;
+  })();
+</script>
+<style>
+  :root,:root[data-theme=dark]{--bg:#0b1016;--panel:#121b24;--panel2:#0f1a23;--line:#20303c;
+    --txt:#dbe6ef;--muted:#8098a9;--accent:#4fd6ff;--folder:#ffce6b;--green:#39ff88;--red:#ff6b6b;
+    --code-bg:#0a1219;--code-fg:#cfe8ff;
+    --mono:ui-monospace,Menlo,Consolas,monospace;color-scheme:dark;}
+  :root[data-theme=light]{--bg:#f3f7fb;--panel:#ffffff;--panel2:#eef3f8;--line:#d5dee7;
+    --txt:#17242f;--muted:#5c6b79;--accent:#0b74c4;--folder:#a5731a;--green:#1a9e57;--red:#c23b3b;
+    --code-bg:#eaf0f6;--code-fg:#12303d;
+    color-scheme:light;}
+  html,body{transition:background .25s ease,color .25s ease}
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--txt);font:14.5px/1.55 system-ui,Segoe UI,Roboto,Arial,sans-serif}
+  header{padding:14px 22px;border-bottom:1px solid var(--line);display:flex;align-items:center;gap:14px;flex-wrap:wrap}
+  h1{margin:0;font-size:18px}
+  .tag{font-size:11px;color:var(--muted);font-family:var(--mono)}
+  .hdr-actions{display:flex;align-items:center;gap:12px;margin-left:auto}
+  .reglink{color:var(--accent);font-size:12px;font-family:var(--mono);text-decoration:none;white-space:nowrap}
+  .reglink:hover{text-decoration:underline}
+  /* theme toggle (from jajera.github.io/guides) */
+  .theme-toggle{display:inline-flex;align-self:center;flex-shrink:0}
+  .theme-toggle__button{display:inline-flex;align-items:center;justify-content:center;width:2.1rem;height:2.1rem;
+    padding:0;border:1px solid var(--line);border-radius:999px;background:var(--panel);color:var(--muted);cursor:pointer}
+  .theme-toggle__button:hover,.theme-toggle__button:focus-visible{color:var(--accent);border-color:var(--muted)}
+  .theme-toggle svg{stroke-linecap:round}
+  .theme-toggle .moon,.theme-toggle .sun,.theme-toggle .sun-beams{transform-origin:center}
+  .theme-toggle .moon,.theme-toggle .sun{fill:currentColor}
+  .theme-toggle .sun-beams{stroke:currentColor;stroke-width:2px}
+  [data-theme=dark] .theme-toggle .sun{transform:scale(1.75)}
+  [data-theme=dark] .theme-toggle .sun-beams{opacity:0}
+  [data-theme=dark] .theme-toggle .moon circle{cx:17;transform:translate(0)}
+  .theme-toggle .sun{transition:transform .4s cubic-bezier(.5,1.25,.75,1.25)}
+  .theme-toggle .sun-beams{transition:opacity .4s ease,transform .4s cubic-bezier(.5,1.25,.75,1.25)}
+  .theme-toggle .moon circle{transition:transform .4s cubic-bezier(.5,1.25,.75,1.25),cx .4s cubic-bezier(.5,1.25,.75,1.25)}
+  .wrap{max-width:1080px;margin:0 auto;padding:16px 22px 60px}
+  .crumbs{font-family:var(--mono);font-size:13px;margin-bottom:12px;word-break:break-all}
+  .crumbs a{color:var(--accent);text-decoration:none;cursor:pointer}
+  .crumbs a:hover{text-decoration:underline}
+  .desc{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:9px 14px;
+    color:var(--muted);font-size:13px;margin-bottom:12px;display:none}
+
+  /* help + folder cli panel */
+  details.help{background:var(--panel);border:1px solid var(--line);border-radius:10px;margin-bottom:12px}
+  details.help summary{cursor:pointer;padding:9px 14px;color:var(--accent);font-size:13px;user-select:none}
+  details.help[open] summary{border-bottom:1px solid var(--line)}
+  .help .body{padding:10px 14px;color:var(--muted);font-size:13px}
+  .cli{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:10px 12px;margin-bottom:14px}
+  .cli h4{margin:0 0 8px;font-size:11px;letter-spacing:.6px;text-transform:uppercase;color:var(--muted)}
+  .note{color:var(--muted);font-size:12px;margin-top:9px;line-height:1.5}
+  .note code{background:var(--code-bg);color:var(--code-fg);padding:1px 5px;border-radius:4px;font-family:var(--mono);font-size:11px}
+  .cmd{display:flex;align-items:center;gap:8px;margin:6px 0;min-width:0}
+  .cmd code{flex:1;min-width:0;background:var(--code-bg);border:1px solid var(--line);border-radius:7px;padding:7px 10px;
+    font-family:var(--mono);font-size:12.5px;color:var(--code-fg);overflow-x:auto;white-space:pre}
+  .cmd .lbl{width:78px;color:var(--muted);font-size:11px;font-family:var(--mono);text-align:right;flex:none}
+  button.copy{flex:none;background:var(--panel2);color:var(--txt);border:1px solid var(--line);
+    border-radius:7px;padding:6px 10px;cursor:pointer;font-size:12px}
+  button.copy:hover{border-color:var(--accent)}
+  button.copy.ok{color:var(--green);border-color:var(--green)}
+
+  table{width:100%;border-collapse:collapse}
+  th,td{text-align:left;padding:8px 12px;border-bottom:1px solid var(--line);font-size:13.5px}
+  th{color:var(--muted);font-size:11px;text-transform:uppercase;letter-spacing:.6px;cursor:pointer;user-select:none;white-space:nowrap}
+  th .arr{color:var(--accent);font-size:10px}
+  td.size,td.date{font-family:var(--mono);font-size:12px;color:var(--muted);white-space:nowrap}
+  td.size{text-align:right}
+  tr.row:hover{background:var(--panel2)}
+  .name{color:var(--txt);display:flex;align-items:center;gap:9px;min-width:0}
+  .name.folder{color:var(--folder);cursor:pointer}
+  .name a{color:var(--accent);text-decoration:none;word-break:break-all;overflow-wrap:anywhere}
+  .name a:hover{text-decoration:underline}
+  .ico{width:18px;text-align:center;flex:none}
+  .dlbtn{margin-left:auto;background:var(--panel2);border:1px solid var(--line);color:var(--muted);
+    border-radius:6px;padding:2px 9px;font-size:11px;font-family:var(--mono);cursor:pointer;flex:none}
+  .dlbtn:hover{border-color:var(--accent);color:var(--accent)}
+  tr.cmdrow td{background:var(--code-bg);padding:0}
+  tr.cmdrow .inner{padding:10px 14px 12px 40px}
+
+  .bar{display:flex;justify-content:space-between;align-items:center;gap:14px;margin-top:16px;flex-wrap:wrap}
+  .status{color:var(--muted);font-size:12px;font-family:var(--mono)}
+  .status.err{color:var(--red)}
+  .controls{display:flex;align-items:center;gap:10px}
+  select,button.more{background:var(--panel);color:var(--txt);border:1px solid var(--line);
+    border-radius:8px;padding:7px 12px;cursor:pointer;font-size:13px}
+  button.more:hover{border-color:var(--accent)}
+  button.more:disabled{opacity:.4;cursor:default}
+  .spin{color:var(--accent)}
+</style>
+</head>
+<body>
+<header>
+  <h1>🌏 GeoNet Open Data</h1>
+  <span class="tag">s3://geonet-open-data · ap-southeast-2 · public (no sign-in required)</span>
+  <div class="hdr-actions">
+    <a class="reglink" href="https://registry.opendata.aws/geonet/" target="_blank" rel="noopener">📖 AWS Open Data registry ↗</a>
+    <theme-toggle class="theme-toggle">
+      <button type="button" class="theme-toggle__button" aria-label="Toggle theme" title="Toggle theme">
+        <svg aria-hidden="true" width="16" height="16" viewBox="0 0 24 24">
+          <mask class="moon" id="moon-mask">
+            <rect x="0" y="0" width="100%" height="100%" fill="white"></rect>
+            <circle cx="24" cy="10" r="6" fill="black"></circle>
+          </mask>
+          <circle class="sun" cx="12" cy="12" r="6" mask="url(#moon-mask)"></circle>
+          <g class="sun-beams" stroke="currentColor">
+            <line x1="12" y1="1" x2="12" y2="3"></line>
+            <line x1="12" y1="21" x2="12" y2="23"></line>
+            <line x1="4.22" y1="4.22" x2="5.64" y2="5.64"></line>
+            <line x1="18.36" y1="18.36" x2="19.78" y2="19.78"></line>
+            <line x1="1" y1="12" x2="3" y2="12"></line>
+            <line x1="21" y1="12" x2="23" y2="12"></line>
+            <line x1="4.22" y1="19.78" x2="5.64" y2="18.36"></line>
+            <line x1="18.36" y1="5.64" x2="19.78" y2="4.22"></line>
+          </g>
+        </svg>
+      </button>
+    </theme-toggle>
+  </div>
+</header>
+<div class="wrap">
+
+  <details class="help">
+    <summary>⬇️ Install the AWS CLI (macOS · Windows · Linux)</summary>
+    <div class="body">
+      Install AWS CLI v2 (official installers), then confirm with <code>aws --version</code>. No AWS account is needed to read this public bucket.
+      <div class="cli" style="margin-top:10px">
+        <div class="cmd"><span class="lbl">macOS</span><code id="i-mac">brew install awscli</code><button class="copy" onclick="cp(this,document.getElementById('i-mac').textContent)">copy</button></div>
+        <div class="cmd"><span class="lbl">macOS pkg</span><code id="i-macpkg">curl "https://awscli.amazonaws.com/AWSCLIV2.pkg" -o AWSCLIV2.pkg && sudo installer -pkg AWSCLIV2.pkg -target /</code><button class="copy" onclick="cp(this,document.getElementById('i-macpkg').textContent)">copy</button></div>
+        <div class="cmd"><span class="lbl">Windows</span><code id="i-win">winget install -e --id Amazon.AWSCLI</code><button class="copy" onclick="cp(this,document.getElementById('i-win').textContent)">copy</button></div>
+        <div class="cmd"><span class="lbl">Win (msi)</span><code id="i-winmsi">msiexec.exe /i https://awscli.amazonaws.com/AWSCLIV2.msi</code><button class="copy" onclick="cp(this,document.getElementById('i-winmsi').textContent)">copy</button></div>
+        <div class="cmd"><span class="lbl">Linux</span><code id="i-linux">curl "https://awscli.amazonaws.com/awscli-exe-linux-x86_64.zip" -o awscliv2.zip && unzip awscliv2.zip && sudo ./aws/install</code><button class="copy" onclick="cp(this,document.getElementById('i-linux').textContent)">copy</button></div>
+        <div class="cmd"><span class="lbl">verify</span><code id="i-verify">aws --version</code><button class="copy" onclick="cp(this,document.getElementById('i-verify').textContent)">copy</button></div>
+      </div>
+      Docs: <a class="reglink" href="https://docs.aws.amazon.com/cli/latest/userguide/getting-started-install.html" target="_blank" rel="noopener">AWS CLI install guide ↗</a>
+    </div>
+  </details>
+
+  <details class="help">
+    <summary>💡 How to download from this bucket with the AWS CLI (no AWS account needed)</summary>
+    <div class="body">
+      This is a <b>public</b> Open Data bucket, so you can read it anonymously with the
+      <code>--no-sign-request</code> flag — no credentials, no sign-up.
+      <div class="cli" style="margin-top:10px">
+        <div class="cmd"><span class="lbl">install</span><code>pip install awscli   # or: brew install awscli</code><button class="copy" onclick="cp(this,'pip install awscli')">copy</button></div>
+        <div class="cmd"><span class="lbl">list</span><code id="ex-ls">aws s3 ls s3://geonet-open-data/ --no-sign-request</code><button class="copy" onclick="cp(this,document.getElementById('ex-ls').textContent)">copy</button></div>
+        <div class="cmd"><span class="lbl">one file</span><code>aws s3 cp s3://geonet-open-data/&lt;key&gt; . --no-sign-request</code><button class="copy" onclick="cp(this,'aws s3 cp s3://geonet-open-data/<key> . --no-sign-request')">copy</button></div>
+        <div class="cmd"><span class="lbl">a folder</span><code>aws s3 sync s3://geonet-open-data/&lt;prefix&gt; ./local-dir --no-sign-request</code><button class="copy" onclick="cp(this,'aws s3 sync s3://geonet-open-data/<prefix> ./local-dir --no-sign-request')">copy</button></div>
+      </div>
+      Tip: click any file below to get its exact <code>cp</code> / <code>curl</code> command, or use the folder commands that update as you browse.
+    </div>
+  </details>
+
+  <div class="crumbs" id="crumbs"></div>
+  <div class="desc" id="desc"></div>
+
+  <div class="cli" id="folderCli">
+    <h4>Commands for this folder</h4>
+    <div class="cmd"><span class="lbl">list</span><code id="fc-ls"></code><button class="copy" onclick="cp(this,document.getElementById('fc-ls').textContent)">copy</button></div>
+    <div class="cmd"><span class="lbl">download</span><code id="fc-sync"></code><button class="copy" onclick="cp(this,document.getElementById('fc-sync').textContent)">copy</button></div>
+    <div class="note">🌱 Please download only what you need — consider filtering to specific stations/dates (or <code>--exclude/--include</code>) and keeping local copies instead of re-syncing. This is shared open data from GeoNet, hosted on the AWS Open Data Program.</div>
+  </div>
+
+  <table>
+    <thead><tr>
+      <th data-k="name">Name <span class="arr" id="a-name">▲</span></th>
+      <th data-k="size" class="size">Size <span class="arr" id="a-size"></span></th>
+      <th data-k="date" class="date">Last modified <span class="arr" id="a-date"></span></th>
+    </tr></thead>
+    <tbody id="rows"></tbody>
+  </table>
+
+  <div class="bar">
+    <span class="status" id="status"></span>
+    <div class="controls">
+      <label class="status">page size
+        <select id="pagesize">
+          <option>100</option><option selected>200</option><option>500</option><option>1000</option>
+        </select>
+      </label>
+      <button class="more" id="more" style="display:none">Load more ▾</button>
+    </div>
+  </div>
+</div>
+
+<script>
+const BUCKET="geonet-open-data";
+const REGION="ap-southeast-2";
+const BASE="https://geonet-open-data.s3.ap-southeast-2.amazonaws.com";
+
+const DESCRIPTIONS={
+  "camera/":"Webcam images from GeoNet volcano-monitoring & built-environment networks.",
+  "coastal/":"Coastal tsunami-gauge sea-level data (CREX format).",
+  "gnss/":"GNSS raw data (proprietary + RINEX) and local tie-in surveys.",
+  "landslide-products/":"Landslide-related data products.",
+  "seismic-products/":"Strong-motion & other derived seismic data products.",
+  "time-series/":"Derived time-series data (compressed CSV) from the sensor network.",
+  "waveforms/":"Raw weak & strong motion seismic waveforms (miniSEED).",
+};
+
+let prefix="", token=null, busy=false;
+let folders=[], files=[];               // accumulated across pages
+let sortKey="name", sortDir=1;          // 1 asc, -1 desc
+
+const $=id=>document.getElementById(id);
+const human=b=>{ if(b==null)return""; b=+b; if(b<1024)return b+" B";
+  const u=["KB","MB","GB","TB"]; let i=-1; do{b/=1024;i++;}while(b>=1024&&i<u.length-1);
+  return b.toFixed(1)+" "+u[i]; };
+const last=p=>p.replace(/\/$/,"").split("/").pop()||BUCKET;
+
+function cp(btn,text){
+  navigator.clipboard.writeText(text).then(()=>{
+    const o=btn.textContent; btn.textContent="copied ✓"; btn.classList.add("ok");
+    setTimeout(()=>{btn.textContent=o;btn.classList.remove("ok");},1200);
+  }).catch(()=>{ btn.textContent="⌘C"; });
+}
+
+function crumbs(){
+  const c=$("crumbs"); c.innerHTML="";
+  const root=document.createElement("a"); root.textContent="geonet-open-data"; root.onclick=()=>go(""); c.appendChild(root);
+  let acc="";
+  prefix.split("/").filter(Boolean).forEach(part=>{
+    acc+=part+"/"; const here=acc;
+    c.appendChild(document.createTextNode(" / "));
+    const a=document.createElement("a"); a.textContent=part; a.onclick=()=>go(here); c.appendChild(a);
+  });
+  const d=$("desc");
+  if(DESCRIPTIONS[prefix]){d.style.display="block";d.textContent=DESCRIPTIONS[prefix];} else d.style.display="none";
+  // folder-level CLI
+  $("fc-ls").textContent=`aws s3 ls s3://${BUCKET}/${prefix} --no-sign-request`;
+  $("fc-sync").textContent=`aws s3 sync s3://${BUCKET}/${prefix} ./${last(prefix)} --no-sign-request`;
+}
+
+function setArrows(){
+  ["name","size","date"].forEach(k=>$("a-"+k).textContent = (k===sortKey?(sortDir>0?"▲":"▼"):""));
+}
+
+function sortFiles(a,b){
+  let r;
+  if(sortKey==="size") r=(a.size||0)-(b.size||0);
+  else if(sortKey==="date") r=(a.date||"").localeCompare(b.date||"");
+  else r=a.name.localeCompare(b.name,undefined,{numeric:true});
+  return r*sortDir;
+}
+
+function render(){
+  const tb=$("rows"); tb.innerHTML="";
+  if(prefix){ // up a level
+    const up=prefix.replace(/[^/]+\/$/,"");
+    const tr=document.createElement("tr"); tr.className="row";
+    tr.innerHTML=`<td><div class="name folder"><span class="ico">⬆</span><span>..</span></div></td><td class="size"></td><td class="date"></td>`;
+    tr.querySelector(".name").onclick=()=>go(up); tb.appendChild(tr);
+  }
+  // folders always first, sorted by name (respecting dir when sorting by name)
+  const fol=[...folders].sort((a,b)=>a.name.localeCompare(b.name,undefined,{numeric:true})*(sortKey==="name"?sortDir:1));
+  fol.forEach(f=>{
+    const tr=document.createElement("tr"); tr.className="row";
+    const td=document.createElement("td");
+    const div=document.createElement("div"); div.className="name folder";
+    div.innerHTML=`<span class="ico">📁</span><span>${f.name}/</span>`;
+    div.onclick=()=>go(f.full); td.appendChild(div); tr.appendChild(td);
+    tr.insertAdjacentHTML("beforeend",`<td class="size"></td><td class="date"></td>`);
+    tb.appendChild(tr);
+  });
+  // files
+  [...files].sort(sortFiles).forEach(f=>{
+    const tr=document.createElement("tr"); tr.className="row";
+    const td=document.createElement("td");
+    const div=document.createElement("div"); div.className="name";
+    div.innerHTML=`<span class="ico">📄</span><a href="${BASE}/${encodeURI(f.key)}" target="_blank" rel="noopener">${f.name}</a>`;
+    const dl=document.createElement("button"); dl.className="dlbtn"; dl.textContent="⬇ get";
+    dl.onclick=()=>toggleCmd(tr,f); div.appendChild(dl);
+    td.appendChild(div); tr.appendChild(td);
+    tr.insertAdjacentHTML("beforeend",`<td class="size">${human(f.size)}</td><td class="date">${(f.date||"").slice(0,16).replace("T"," ")}</td>`);
+    tb.appendChild(tr);
+  });
+  setArrows();
+  $("status").classList.remove("err");
+  $("status").textContent=`${folders.length} folder(s), ${files.length} file(s) loaded${token?" · more available":""}`;
+}
+
+function toggleCmd(row,f){
+  const nxt=row.nextElementSibling;
+  if(nxt && nxt.classList.contains("cmdrow")){ nxt.remove(); return; }
+  const cpv=`aws s3 cp s3://${BUCKET}/${f.key} . --no-sign-request`;
+  const url=`${BASE}/${encodeURI(f.key)}`;
+  const tr=document.createElement("tr"); tr.className="cmdrow";
+  tr.innerHTML=`<td colspan="3"><div class="inner cli" style="margin:0;border:0;padding-top:8px;padding-bottom:8px">
+    <div class="cmd"><span class="lbl">aws cli</span><code>${cpv}</code><button class="copy">copy</button></div>
+    <div class="cmd"><span class="lbl">curl</span><code>curl -O "${url}"</code><button class="copy">copy</button></div>
+    <div class="cmd"><span class="lbl">url</span><code>${url}</code><button class="copy">copy</button></div>
+  </div></td>`;
+  const btns=tr.querySelectorAll("button.copy");
+  btns[0].onclick=e=>cp(e.target,cpv);
+  btns[1].onclick=e=>cp(e.target,`curl -O "${url}"`);
+  btns[2].onclick=e=>cp(e.target,url);
+  row.after(tr);
+}
+
+async function load(append){
+  if(busy) return; busy=true;
+  $("more").disabled=true;
+  $("status").classList.remove("err"); $("status").innerHTML='<span class="spin">loading…</span>';
+  const size=$("pagesize").value;
+  let url=`${BASE}/?list-type=2&delimiter=/&max-keys=${size}&prefix=${encodeURIComponent(prefix)}`;
+  if(append && token) url+=`&continuation-token=${encodeURIComponent(token)}`;
+  try{
+    const res=await fetch(url);
+    if(!res.ok) throw new Error("HTTP "+res.status);
+    const xml=new DOMParser().parseFromString(await res.text(),"text/xml");
+    if(!append){ folders=[]; files=[]; }
+    xml.querySelectorAll("CommonPrefixes > Prefix").forEach(p=>{
+      const full=p.textContent;
+      folders.push({full,name:full.slice(prefix.length).replace(/\/$/,"")});
+    });
+    xml.querySelectorAll("Contents").forEach(c=>{
+      const key=c.querySelector("Key").textContent; if(key===prefix) return;
+      files.push({key,name:key.slice(prefix.length),
+        size:+c.querySelector("Size").textContent,
+        date:c.querySelector("LastModified").textContent});
+    });
+    token = xml.querySelector("IsTruncated")?.textContent==="true"
+          ? (xml.querySelector("NextContinuationToken")?.textContent||null) : null;
+    $("more").style.display = token ? "inline-block" : "none";
+    render();
+  }catch(err){
+    $("status").classList.add("err");
+    $("status").innerHTML=`error: ${err.message} — <a href="#" style="color:var(--accent)" onclick="event.preventDefault();load(${!!append})">retry</a>`;
+  }finally{
+    busy=false; $("more").disabled=false;
+  }
+}
+
+function go(p){ prefix=p; token=null; folders=[]; files=[]; crumbs(); load(false);
+  history.replaceState(null,"","#/"+p); }
+
+// sortable headers
+document.querySelectorAll("th[data-k]").forEach(th=>{
+  th.onclick=()=>{ const k=th.dataset.k;
+    if(sortKey===k) sortDir*=-1; else {sortKey=k; sortDir=1;}
+    render(); };
+});
+$("more").onclick=()=>load(true);
+$("pagesize").onchange=()=>go(prefix);   // reload folder with new page size
+
+// deep-link + back/forward
+function fromHash(){ return decodeURIComponent(location.hash.replace(/^#\//,"")||""); }
+window.addEventListener("hashchange",()=>{ const p=fromHash(); if(p!==prefix) go(p); });
+prefix=fromHash(); crumbs(); load(false);
+</script>
+
+<script>
+// Theme toggle (adapted from jajera.github.io/guides) — defaults to system preference
+(function(){
+  const storageKey='geonet-theme';
+  const norm=t=>(t==='light'||t==='dark')?t:'auto';
+  const sys=()=>matchMedia('(prefers-color-scheme: light)').matches?'light':'dark';
+  const stored=()=>{try{return norm(localStorage.getItem(storageKey));}catch(e){return 'auto';}};
+  const persist=t=>{try{(t==='light'||t==='dark')?localStorage.setItem(storageKey,t):localStorage.removeItem(storageKey);}catch(e){}};
+  function apply(t){
+    const r=t==='auto'?sys():t;
+    document.documentElement.dataset.theme=r;
+    document.documentElement.style.colorScheme=r;
+    persist(t==='auto'?r:t);
+    document.querySelectorAll('.theme-toggle__button').forEach(b=>{
+      b.setAttribute('aria-label',`Switch to ${r==='dark'?'light':'dark'} theme`);
+      b.setAttribute('title',`Switch to ${r==='dark'?'light':'dark'} theme`);
+    });
+  }
+  if(!customElements.get('theme-toggle')){
+    customElements.define('theme-toggle', class extends HTMLElement{
+      connectedCallback(){
+        const b=this.querySelector('button');
+        b && b.addEventListener('click',()=>{
+          const cur=document.documentElement.dataset.theme==='light'?'light':'dark';
+          apply(cur==='dark'?'light':'dark');
+        });
+      }
+    });
+  }
+  apply(stored()==='auto'?sys():stored());
+  matchMedia('(prefers-color-scheme: light)').addEventListener('change',()=>{ if(stored()==='auto') apply('auto'); });
+})();
+</script>
+</body>
+</html>
